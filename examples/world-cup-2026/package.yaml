@@ -1,8 +1,10 @@
 # ---------------------------------------------------------------------------
-# World Cup 2026 knockout bracket — data glue for tournament-bracket-card
+# World Cup 2026 — data glue for the tournament dashboard
 #
-# Produces sensor.wc_bracket with a `rounds` attribute in the card's neutral
-# data model, sourced from ESPN's PUBLIC API (no API key, no secrets).
+# Produces, from ESPN's PUBLIC API (no API key, no secrets):
+#   - sensor.wc_bracket    .rounds   -> knockout bracket (tournament-bracket-card)
+#   - sensor.wc_standings  .groups   -> the 12 group tables
+#   - sensor.wc_schedule   .matches  -> today / live / fixtures / results
 #
 # Install: copy this file to <config>/packages/world_cup_bracket.yaml and ensure
 # packages are enabled in configuration.yaml:
@@ -23,6 +25,33 @@ rest:
     sensor:
       - name: "WC Knockout Raw"
         unique_id: wc_knockout_raw
+        value_template: "{{ (value_json.events | default([])) | count }}"
+        json_attributes:
+          - events
+
+  - resource: "https://site.api.espn.com/apis/v2/sports/soccer/fifa.world/standings"
+    scan_interval: 600
+    timeout: 30
+    headers:
+      User-Agent: "Home Assistant World Cup Bracket"
+    sensor:
+      - name: "WC Standings Raw"
+        unique_id: wc_standings_raw
+        value_template: "{{ (value_json.children | default([])) | count }}"
+        json_attributes:
+          - children
+
+  # Rolling window (last 7 days .. next 14 days) keeps the attribute size bounded.
+  # Widen the day offsets if you want more history / lookahead.
+  - resource_template: >-
+      https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?lang=en&limit=200&dates={{ (now() - timedelta(days=7)).strftime('%Y%m%d') }}-{{ (now() + timedelta(days=14)).strftime('%Y%m%d') }}
+    scan_interval: 120
+    timeout: 30
+    headers:
+      User-Agent: "Home Assistant World Cup Bracket"
+    sensor:
+      - name: "WC Matches Raw"
+        unique_id: wc_matches_raw
         value_template: "{{ (value_json.events | default([])) | count }}"
         json_attributes:
           - events
@@ -79,6 +108,80 @@ template:
             {% endfor %}
             {{ ns.rounds | to_json }}
 
+  - trigger:
+      - platform: state
+        entity_id: sensor.wc_standings_raw
+      - platform: homeassistant
+        event: start
+      - platform: time_pattern
+        minutes: "/10"
+    sensor:
+      - name: "WC Standings"
+        unique_id: wc_standings
+        state: "{{ (state_attr('sensor.wc_standings_raw', 'children') | default([])) | count }} groups"
+        attributes:
+          # 12 group tables, teams sorted by rank, as a JSON string.
+          groups: >
+            {% set children = state_attr('sensor.wc_standings_raw', 'children') or [] %}
+            {% set ns = namespace(groups=[]) %}
+            {% for g in children %}
+              {% set teams = namespace(list=[]) %}
+              {% for e in g.standings.entries %}
+                {% set t = {
+                  'name': e.team.displayName, 'abbr': e.team.abbreviation,
+                  'logo': (e.team.logos[0].href if e.team.logos else none),
+                  'gp': (e.stats|selectattr('name','eq','gamesPlayed')|map(attribute='displayValue')|first|default('0')),
+                  'w': (e.stats|selectattr('name','eq','wins')|map(attribute='displayValue')|first|default('0')),
+                  'd': (e.stats|selectattr('name','eq','ties')|map(attribute='displayValue')|first|default('0')),
+                  'l': (e.stats|selectattr('name','eq','losses')|map(attribute='displayValue')|first|default('0')),
+                  'gf': (e.stats|selectattr('name','eq','pointsFor')|map(attribute='displayValue')|first|default('0')),
+                  'ga': (e.stats|selectattr('name','eq','pointsAgainst')|map(attribute='displayValue')|first|default('0')),
+                  'gd': (e.stats|selectattr('name','eq','pointDifferential')|map(attribute='displayValue')|first|default('0')),
+                  'pts': (e.stats|selectattr('name','eq','points')|map(attribute='displayValue')|first|default('0')),
+                  'rank': (e.stats|selectattr('name','eq','rank')|map(attribute='value')|first|default(99))|int
+                } %}
+                {% set teams.list = teams.list + [t] %}
+              {% endfor %}
+              {% set ns.groups = ns.groups + [{'name': g.name, 'teams': (teams.list|sort(attribute='rank'))}] %}
+            {% endfor %}
+            {{ ns.groups | to_json }}
+
+  - trigger:
+      - platform: state
+        entity_id: sensor.wc_matches_raw
+      - platform: homeassistant
+        event: start
+      - platform: time_pattern
+        minutes: "/2"
+    sensor:
+      - name: "WC Schedule"
+        unique_id: wc_schedule
+        state: "{{ (state_attr('sensor.wc_matches_raw', 'events') | default([])) | count }} matches"
+        attributes:
+          # Compact, date-sorted match list. The dashboard markdown cards filter
+          # this into today / live / fixtures (pre) / results (post).
+          matches: >
+            {% set events = state_attr('sensor.wc_matches_raw', 'events') or [] %}
+            {% set ns = namespace(list=[]) %}
+            {% for e in events %}
+              {% set comp = e.competitions[0] %}
+              {% set st = comp.status.type %}
+              {% set state = 'live' if st.state == 'in' else st.state %}
+              {% set home = (comp.competitors | selectattr('homeAway','eq','home') | list) %}
+              {% set away = (comp.competitors | selectattr('homeAway','eq','away') | list) %}
+              {% if home and away %}
+                {% set h = home[0] %}
+                {% set a = away[0] %}
+                {% set m = {
+                  'date': e.date, 'stage': e.season.slug, 'state': state, 'status': st.shortDetail,
+                  'home': h.team.displayName, 'homeAbbr': h.team.abbreviation, 'homeLogo': (h.team.logo if h.team.logo else none), 'homeScore': (h.score if st.state != 'pre' else none),
+                  'away': a.team.displayName, 'awayAbbr': a.team.abbreviation, 'awayLogo': (a.team.logo if a.team.logo else none), 'awayScore': (a.score if st.state != 'pre' else none)
+                } %}
+                {% set ns.list = ns.list + [m] %}
+              {% endif %}
+            {% endfor %}
+            {{ (ns.list | sort(attribute='date')) | to_json }}
+
 # ---------------------------------------------------------------------------
 # Recommended: keep these large/volatile entities out of the recorder database.
 # If you already have a `recorder:` block, MERGE these excludes into it instead
@@ -89,3 +192,7 @@ template:
 #     entities:
 #       - sensor.wc_knockout_raw
 #       - sensor.wc_bracket
+#       - sensor.wc_standings_raw
+#       - sensor.wc_standings
+#       - sensor.wc_matches_raw
+#       - sensor.wc_schedule
