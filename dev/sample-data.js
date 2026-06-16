@@ -97,4 +97,27 @@
     final,
     thirdPlace,
   ];
+
+  // An odd / non-power-of-two bracket (3-match first round + a bye) for testing
+  // the edge-case connector handling.
+  window.WC_ODD = [
+    {
+      id: "r1",
+      name: "Round 1",
+      matches: [
+        { sideA: { ...team("Alpha", "arg"), score: 2, winner: true }, sideB: { ...team("Bravo", "bra"), score: 1 }, state: "post", statusDetail: "FT", date: "2026-07-01T19:00Z" },
+        { sideA: team("Charlie", "cmr"), sideB: team("Delta", "den"), state: "pre", date: "2026-07-01T21:00Z" },
+        { sideA: team("Echo", "ecu"), sideB: team("Foxtrot", "fra"), state: "pre", date: "2026-07-02T19:00Z" },
+      ],
+    },
+    {
+      id: "sf",
+      name: "Semifinals",
+      matches: [
+        { sideA: tbd("W R1-1"), sideB: tbd("W R1-2"), state: "pre" },
+        { sideA: tbd("W R1-3"), sideB: tbd("Bye"), state: "pre" },
+      ],
+    },
+    { id: "final", name: "Final", matches: [{ sideA: tbd("W SF-1"), sideB: tbd("W SF-2"), state: "pre" }] },
+  ];
 })();

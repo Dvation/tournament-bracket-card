@@ -10,3 +10,4 @@ entity: sensor.wc_bracket
 attribute: rounds
 show_third_place: true
 show_logos: true
+# theme: neon          # optional bundled theme: "neon" or "bronze"

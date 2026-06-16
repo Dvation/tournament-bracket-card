@@ -59,13 +59,15 @@
       const mount = document.getElementById("mount");
       const card = document.createElement("tournament-bracket-card");
       const params = new URLSearchParams(location.search);
-      const rounds = params.has("small") ? window.WC_SAMPLE.slice(2, 5) : window.WC_SAMPLE;
-      card.setConfig({
-        title: params.has("small") ? "Bracket (small sample)" : "FIFA World Cup 2026 — Knockout Bracket",
-        rounds: rounds,
-        show_third_place: true,
-        show_logos: true,
-      });
+      let rounds = window.WC_SAMPLE;
+      let title = "FIFA World Cup 2026 — Knockout Bracket";
+      if (params.has("small")) { rounds = window.WC_SAMPLE.slice(2, 5); title = "Bracket (small sample)"; }
+      if (params.has("odd")) { rounds = window.WC_ODD; title = "Odd bracket (edge case)"; }
+      const cfg = { title: title, rounds: rounds, show_third_place: true, show_logos: true };
+      if (params.has("compact")) cfg.compact = true;
+      if (params.has("theme")) cfg.theme = params.get("theme");
+      if (params.has("accent")) cfg.accent_color = params.get("accent") || "#e91e63";
+      card.setConfig(cfg);
       mount.appendChild(card);
       if (params.has("narrow")) mount.style.maxWidth = "380px";
 

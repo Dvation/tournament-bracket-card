@@ -22,7 +22,8 @@ sensors — see the [`examples/world-cup-2026/`](./examples/world-cup-2026/) fol
 - Per-match: two sides with optional crest, score, and **winner highlighting**.
 - Live / scheduled / finished states with a status badge.
 - Responsive: horizontal tree on desktop, round selector on narrow screens.
-- Theme-aware via Home Assistant CSS variables.
+- Theme-aware via Home Assistant CSS variables, with optional `compact` mode and `accent_color` / `connector_color` overrides.
+- Graceful handling of odd / non-power-of-two brackets (byes, unpaired matches).
 
 ## Installation
 
@@ -42,11 +43,29 @@ attribute: rounds              # attribute name (default: "rounds")
 # rounds: [...]                # OR inline static data (overrides entity)
 show_third_place: true         # optional (default: true)
 show_logos: true               # optional (default: true) — team crests
+compact: false                 # optional — denser layout
+theme: ""                      # optional — "" (default) | "neon" | "bronze"
+accent_color: ""               # optional — CSS color for winners / scores / active tab
+connector_color: ""            # optional — CSS color for the bracket lines
 ```
 
 > **Tip:** display the card in a **panel-mode view** (View type → *Panel (1 card)*, or
 > `panel: true`). A bracket is wide, so it needs the full page width; in a normal
 > column the card switches to its narrow single-column (tab) layout.
+
+### Bundled themes
+
+Set `theme:` to restyle the whole card. Themes can be combined with `compact`, and
+`accent_color` / `connector_color` still override the theme's colors.
+
+- **`neon`** — dark slate background, lime-green accents and connectors, magenta live state.
+- **`bronze`** — warm dark background, gold accents, thin connectors, highlighted Final.
+
+```yaml
+type: custom:tournament-bracket-card
+entity: sensor.wc_bracket
+theme: neon
+```
 
 ### Data model (`rounds`)
 
@@ -91,7 +110,8 @@ on layout without a running Home Assistant.
 
 - `v0.1` — YAML-configured card, bracket rendering, mobile round-tabs. ✅
 - `v0.2` — visual config editor (UI) + card-picker preview. ✅
-- next — odd-bracket edge cases, theming options, packaging for the HACS default store.
+- `v0.3` — odd-bracket edge cases + theming (compact, accent/connector colors, **neon & bronze themes**). ✅
+- next — packaging for the HACS default store.
 
 ## License
 

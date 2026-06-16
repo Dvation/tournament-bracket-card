@@ -10,7 +10,7 @@
  * Repo: https://github.com/Dvation/tournament-bracket-card
  */
 
-const CARD_VERSION = "0.2.0";
+const CARD_VERSION = "0.3.0";
 
 console.info(
   `%c TOURNAMENT-BRACKET-CARD %c v${CARD_VERSION} `,
@@ -91,6 +91,10 @@ class TournamentBracketCard extends HTMLElement {
       rounds: Array.isArray(config.rounds) ? config.rounds : null,
       show_third_place: config.show_third_place !== false,
       show_logos: config.show_logos !== false,
+      compact: config.compact === true,
+      theme: typeof config.theme === "string" ? config.theme : null,
+      accent_color: typeof config.accent_color === "string" ? config.accent_color : null,
+      connector_color: typeof config.connector_color === "string" ? config.connector_color : null,
     };
     this._sig = null;
     this._update(true);
@@ -135,7 +139,7 @@ class TournamentBracketCard extends HTMLElement {
   getCardSize() {
     const d = this._data;
     if (!Array.isArray(d) || !d.length) return 3;
-    const m = Math.max(1, ...d.map((r) => (r.matches || []).length));
+    const m = Math.max(1, ...d.map((r) => (r && Array.isArray(r.matches) ? r.matches.length : 0)));
     return Math.min(12, Math.max(3, m + 1));
   }
 
@@ -144,7 +148,7 @@ class TournamentBracketCard extends HTMLElement {
     const c = this._config;
     const data = this._data;
 
-    let rounds = Array.isArray(data) ? data.slice() : [];
+    let rounds = Array.isArray(data) ? data.filter((r) => r && typeof r === "object") : [];
     if (c && !c.show_third_place) rounds = rounds.filter((r) => !isThirdPlace(r));
 
     const header = c && c.title ? `<div class="tbc-title">${esc(c.title)}</div>` : "";
@@ -170,7 +174,19 @@ class TournamentBracketCard extends HTMLElement {
       body = `<div class="tbc-tabs">${tabs}</div><div class="tbc-scroll"><div class="tbc-bracket">${cols}</div></div>`;
     }
 
-    this.shadowRoot.innerHTML = `<style>${this._styles()}</style><div class="tbc-card">${header}${body}</div>`;
+    const THEMES = { neon: "tbc-theme-neon", bronze: "tbc-theme-bronze" };
+    let cardCls = "tbc-card";
+    if (c && c.compact) cardCls += " tbc-compact";
+    if (c && c.theme && THEMES[c.theme]) cardCls += " " + THEMES[c.theme];
+    this.shadowRoot.innerHTML = `<style>${this._styles()}</style><div class="${cardCls}">${header}${body}</div>`;
+
+    // Optional theming via CSS custom properties. setProperty validates the value
+    // (invalid colors are ignored by the CSSOM), so this is injection-safe.
+    const cardEl = this.shadowRoot.querySelector(".tbc-card");
+    if (cardEl && c) {
+      if (c.accent_color) cardEl.style.setProperty("--tbc-accent", c.accent_color);
+      if (c.connector_color) cardEl.style.setProperty("--tbc-line", c.connector_color);
+    }
 
     // Wire interactions WITHOUT inline handlers (CSP-safe).
     const roundEls = this.shadowRoot.querySelectorAll(".tbc-round");
@@ -191,7 +207,7 @@ class TournamentBracketCard extends HTMLElement {
   _round(r, i, flags) {
     flags = flags || {};
     const slots =
-      (r.matches || []).map((m) => this._match(m)).join("") ||
+      (Array.isArray(r.matches) ? r.matches : []).map((m) => this._match(m)).join("") ||
       `<div class="tbc-slot"><div class="tbc-match tbc-match--pre"><div class="tbc-side tbc-side--tbd"><span class="tbc-team"><span class="tbc-name">—</span></span></div></div></div>`;
     let cls = "tbc-round";
     if (flags.isThird) cls += " tbc-round--third";
@@ -203,6 +219,7 @@ class TournamentBracketCard extends HTMLElement {
   }
 
   _match(m) {
+    m = m || {};
     const state = (m.state || "").toLowerCase();
     const a = m.sideA || {};
     const b = m.sideB || {};
@@ -242,35 +259,82 @@ class TournamentBracketCard extends HTMLElement {
     return `
       :host { display:block; }
       .tbc-card {
-        --tbc-line: color-mix(in srgb, var(--secondary-text-color, #8a8a8a) 60%, transparent);
-        background: var(--ha-card-background, var(--card-background-color, #fff));
-        color: var(--primary-text-color, #212121);
-        border-radius: var(--ha-card-border-radius, 12px);
-        box-shadow: var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,.12));
-        border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--divider-color, transparent));
+        --tbc-bg: var(--ha-card-background, var(--card-background-color, #fff));
+        --tbc-fg: var(--primary-text-color, #212121);
+        --tbc-muted: var(--secondary-text-color, #727272);
+        --tbc-match-bg: var(--secondary-background-color, #fafafa);
+        --tbc-border: var(--divider-color, #e6e6e6);
+        --tbc-accent: var(--primary-color, #03a9f4);
+        --tbc-on-accent: #fff;
+        --tbc-live: var(--error-color, #e53935);
+        --tbc-line: color-mix(in srgb, var(--tbc-muted) 60%, transparent);
+        --tbc-radius: var(--ha-card-border-radius, 12px);
+        --tbc-match-radius: 8px;
+        --tbc-shadow: var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,.12));
+        --tbc-card-border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--divider-color, transparent));
+        background: var(--tbc-bg);
+        color: var(--tbc-fg);
+        border-radius: var(--tbc-radius);
+        box-shadow: var(--tbc-shadow);
+        border: var(--tbc-card-border);
         padding: 12px;
         overflow: hidden;
         container-type: inline-size;
       }
+
+      /* ---- bundled themes (selectable via the theme config option) ---- */
+      .tbc-card.tbc-theme-neon {
+        --tbc-bg: #0d1117;
+        --tbc-fg: #f2f5f8;
+        --tbc-muted: #8b97a6;
+        --tbc-match-bg: #1a212b;
+        --tbc-border: #2c3744;
+        --tbc-accent: #b6ff3a;
+        --tbc-on-accent: #0d1117;
+        --tbc-live: #ff2d8e;
+        --tbc-line: color-mix(in srgb, var(--tbc-accent) 55%, transparent);
+        --tbc-radius: 16px;
+        --tbc-match-radius: 12px;
+        --tbc-shadow: 0 4px 18px rgba(0,0,0,.45);
+        --tbc-card-border: 1px solid #1c2530;
+      }
+      .tbc-card.tbc-theme-bronze {
+        --tbc-bg: #272019;
+        --tbc-fg: #f3efe6;
+        --tbc-muted: #a89c86;
+        --tbc-match-bg: #332b1f;
+        --tbc-border: #4a4030;
+        --tbc-accent: #cda860;
+        --tbc-on-accent: #271f12;
+        --tbc-live: #e0563b;
+        --tbc-line: color-mix(in srgb, #ffffff 32%, transparent);
+        --tbc-radius: 14px;
+        --tbc-match-radius: 10px;
+        --tbc-shadow: 0 4px 18px rgba(0,0,0,.4);
+        --tbc-card-border: 1px solid #3a3225;
+      }
+      .tbc-card.tbc-theme-bronze .tbc-round--final .tbc-match {
+        border-color: var(--tbc-accent); box-shadow: 0 0 0 1px var(--tbc-accent);
+      }
+
       .tbc-title { font-size: 1.25rem; font-weight: 600; padding: 4px 4px 12px; }
-      .tbc-empty { padding: 24px; text-align: center; color: var(--secondary-text-color, #727272); }
-      .tbc-empty code { background: var(--secondary-background-color,#f0f0f0); padding:1px 5px; border-radius:4px; }
+      .tbc-empty { padding: 24px; text-align: center; color: var(--tbc-muted); }
+      .tbc-empty code { background: var(--tbc-match-bg); padding:1px 5px; border-radius:4px; }
 
       .tbc-tabs { display:none; gap:6px; overflow-x:auto; padding:0 2px 10px; scrollbar-width:thin; }
       .tbc-tab {
         flex:0 0 auto; cursor:pointer; font:inherit; font-size:.8rem;
-        background: var(--secondary-background-color,#f0f0f0);
-        color: var(--primary-text-color,#212121);
+        background: var(--tbc-match-bg); color: var(--tbc-fg);
         border:none; border-radius:14px; padding:5px 12px; white-space:nowrap;
       }
-      .tbc-tab.active { background: var(--primary-color,#03a9f4); color:#fff; }
+      .tbc-tab.active { background: var(--tbc-accent); color: var(--tbc-on-accent); }
 
       .tbc-scroll { overflow-x:auto; padding-bottom:4px; scrollbar-width:thin; }
       .tbc-bracket { display:flex; align-items:stretch; width:max-content; min-width:100%; padding:4px 2px; }
       .tbc-round { flex:0 0 auto; display:flex; flex-direction:column; min-width:176px; padding:0 14px; scroll-margin-left:8px; }
       .tbc-round-title {
         font-size:.72rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
-        color: var(--secondary-text-color,#727272); text-align:center; padding-bottom:8px;
+        color: var(--tbc-muted); text-align:center; padding-bottom:8px;
       }
       .tbc-matches { flex:1; display:flex; flex-direction:column; }
       /* flex-basis:auto so a slot never shrinks below its card (no clipping in
@@ -278,10 +342,10 @@ class TournamentBracketCard extends HTMLElement {
       .tbc-slot { flex:1 1 auto; display:flex; align-items:center; position:relative; padding:6px 0; }
 
       .tbc-match {
-        width:100%; background: var(--secondary-background-color,#fafafa);
-        border:1px solid var(--divider-color,#e6e6e6); border-radius:8px; overflow:hidden;
+        width:100%; background: var(--tbc-match-bg);
+        border:1px solid var(--tbc-border); border-radius: var(--tbc-match-radius); overflow:hidden;
       }
-      .tbc-match--live { border-color: var(--error-color,#e53935); box-shadow:0 0 0 1px var(--error-color,#e53935); }
+      .tbc-match--live { border-color: var(--tbc-live); box-shadow:0 0 0 1px var(--tbc-live); }
 
       /* bracket connectors: elbows joining each pair to the next round */
       .tbc-round:not(.tbc-round--final):not(.tbc-round--third) .tbc-slot::after {
@@ -294,6 +358,10 @@ class TournamentBracketCard extends HTMLElement {
       .tbc-round:not(.tbc-round--final):not(.tbc-round--third) .tbc-slot:nth-child(even)::after {
         bottom:50%; height:100%; border-bottom:2px solid var(--tbc-line);
       }
+      /* odd-count round: the lone unpaired (last) match gets only a forward stub */
+      .tbc-round:not(.tbc-round--final):not(.tbc-round--third) .tbc-slot:nth-child(odd):last-child::after {
+        top:50%; height:0; border-top:2px solid var(--tbc-line); border-right:none;
+      }
       .tbc-round:not(:first-child):not(.tbc-round--third) .tbc-slot::before {
         content:""; position:absolute; right:100%; top:50%; width:14px; height:2px; background: var(--tbc-line);
       }
@@ -302,25 +370,33 @@ class TournamentBracketCard extends HTMLElement {
         display:flex; align-items:center; justify-content:space-between; gap:8px;
         padding:7px 10px; font-size:.9rem;
       }
-      .tbc-side + .tbc-side { border-top:1px solid var(--divider-color,#e6e6e6); }
+      .tbc-side + .tbc-side { border-top:1px solid var(--tbc-border); }
       .tbc-team { display:flex; align-items:center; gap:8px; min-width:0; }
       .tbc-crest { width:20px; height:20px; object-fit:contain; flex:0 0 auto; }
       .tbc-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .tbc-score { font-variant-numeric:tabular-nums; font-weight:700; flex:0 0 auto; }
       .tbc-side--win { font-weight:700; }
-      .tbc-side--win .tbc-score { color: var(--primary-color,#03a9f4); }
-      .tbc-side--tbd .tbc-name { color: var(--secondary-text-color,#9e9e9e); font-style:italic; }
+      .tbc-side--win .tbc-score { color: var(--tbc-accent); }
+      .tbc-side--tbd .tbc-name { color: var(--tbc-muted); font-style:italic; }
 
       .tbc-meta { display:flex; align-items:center; justify-content:flex-end; gap:8px; padding:3px 10px 6px; min-height:14px; }
       .tbc-badge { font-size:.62rem; font-weight:700; letter-spacing:.05em; padding:1px 6px; border-radius:8px;
-        background: var(--divider-color,#e0e0e0); color: var(--primary-text-color,#333); }
-      .tbc-badge--live { background: var(--error-color,#e53935); color:#fff; }
+        background: var(--tbc-border); color: var(--tbc-fg); }
+      .tbc-badge--live { background: var(--tbc-live); color:#fff; }
       @media (prefers-reduced-motion: no-preference) {
         .tbc-badge--live { animation: tbc-pulse 1.3s ease-in-out infinite; }
       }
-      .tbc-badge--post { background: var(--divider-color,#e0e0e0); color: var(--secondary-text-color,#555); }
-      .tbc-when { font-size:.68rem; color: var(--secondary-text-color,#727272); }
+      .tbc-badge--post { background: var(--tbc-border); color: var(--tbc-muted); }
+      .tbc-when { font-size:.68rem; color: var(--tbc-muted); }
       @keyframes tbc-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+      .tbc-compact { padding:8px; }
+      .tbc-compact .tbc-title { font-size:1.05rem; padding:2px 2px 8px; }
+      .tbc-compact .tbc-round { min-width:142px; padding:0 10px; }
+      .tbc-compact .tbc-side { padding:4px 8px; font-size:.82rem; }
+      .tbc-compact .tbc-crest { width:16px; height:16px; }
+      .tbc-compact .tbc-slot { padding:4px 0; }
+      .tbc-compact .tbc-meta { padding:2px 8px 4px; }
 
       @container (max-width: 560px) {
         .tbc-tabs { display:flex; }
@@ -361,6 +437,10 @@ class TournamentBracketCardEditor extends HTMLElement {
           attribute: "Attribute name (default: rounds)",
           show_third_place: "Show third-place match",
           show_logos: "Show team crests",
+          compact: "Compact layout",
+          theme: "Theme",
+          accent_color: "Accent color (CSS color)",
+          connector_color: "Connector line color (CSS color)",
         }[s.name] || s.name);
       this._form.addEventListener("value-changed", (ev) => {
         ev.stopPropagation();
@@ -378,6 +458,14 @@ class TournamentBracketCardEditor extends HTMLElement {
       { name: "attribute", selector: { text: {} } },
       { name: "show_third_place", selector: { boolean: {} } },
       { name: "show_logos", selector: { boolean: {} } },
+      { name: "compact", selector: { boolean: {} } },
+      { name: "theme", selector: { select: { mode: "dropdown", options: [
+        { value: "default", label: "Default (Home Assistant theme)" },
+        { value: "neon", label: "Neon" },
+        { value: "bronze", label: "Bronze" },
+      ] } } },
+      { name: "accent_color", selector: { text: {} } },
+      { name: "connector_color", selector: { text: {} } },
     ];
     this._form.data = this._config || {};
   }
