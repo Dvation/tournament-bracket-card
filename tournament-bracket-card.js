@@ -10,7 +10,7 @@
  * Repo: https://github.com/Dvation/tournament-bracket-card
  */
 
-const CARD_VERSION = "0.3.0";
+const CARD_VERSION = "0.3.1";
 
 console.info(
   `%c TOURNAMENT-BRACKET-CARD %c v${CARD_VERSION} `,
@@ -95,6 +95,7 @@ class TournamentBracketCard extends HTMLElement {
       theme: typeof config.theme === "string" ? config.theme : null,
       accent_color: typeof config.accent_color === "string" ? config.accent_color : null,
       connector_color: typeof config.connector_color === "string" ? config.connector_color : null,
+      theme_vars: config.theme_vars && typeof config.theme_vars === "object" ? config.theme_vars : null,
     };
     this._sig = null;
     this._update(true);
@@ -186,6 +187,16 @@ class TournamentBracketCard extends HTMLElement {
     if (cardEl && c) {
       if (c.accent_color) cardEl.style.setProperty("--tbc-accent", c.accent_color);
       if (c.connector_color) cardEl.style.setProperty("--tbc-line", c.connector_color);
+      // Full custom theming: override any --tbc-* variable. Restricted to custom
+      // properties (keys starting with --) and applied via setProperty, which the
+      // CSSOM validates — so it can't inject arbitrary CSS or break layout.
+      if (c.theme_vars) {
+        for (const [k, v] of Object.entries(c.theme_vars)) {
+          if (typeof k === "string" && k.startsWith("--") && typeof v === "string") {
+            cardEl.style.setProperty(k, v);
+          }
+        }
+      }
     }
 
     // Wire interactions WITHOUT inline handlers (CSP-safe).
