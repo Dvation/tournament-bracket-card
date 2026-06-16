@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tournament Bracket Card — dev harness</title>
+    <style>
+      /* Approximate Home Assistant theme variables so the card looks native
+         outside of HA. Toggle .dark on <body> to preview the dark theme. */
+      :root {
+        --primary-text-color: #212121;
+        --secondary-text-color: #727272;
+        --primary-color: #03a9f4;
+        --error-color: #e53935;
+        --divider-color: #e0e0e0;
+        --card-background-color: #ffffff;
+        --secondary-background-color: #f4f5f7;
+        --ha-card-border-radius: 12px;
+        --ha-card-box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+        --app-bg: #eef1f5;
+      }
+      body.dark {
+        --primary-text-color: #e1e1e1;
+        --secondary-text-color: #9b9b9b;
+        --primary-color: #2196f3;
+        --error-color: #f44336;
+        --divider-color: #2b2f37;
+        --card-background-color: #1c1f26;
+        --secondary-background-color: #262a33;
+        --ha-card-box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+        --app-bg: #111318;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--app-bg);
+        font-family: -apple-system, Roboto, "Segoe UI", sans-serif;
+        color: var(--primary-text-color);
+      }
+      .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+      .toolbar h1 { font-size: 1rem; font-weight: 600; margin: 0; }
+      .toolbar button { font: inherit; cursor: pointer; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); }
+      #mount { max-width: 1340px; }
+    </style>
+  </head>
+  <body class="dark">
+    <div class="toolbar">
+      <h1>Tournament Bracket Card — dev harness</h1>
+      <button id="theme">Toggle light/dark</button>
+      <button id="narrow">Toggle narrow (mobile)</button>
+    </div>
+    <div id="mount"></div>
+
+    <!-- Load as classic scripts (no ES module / file:// CORS issues).
+         The card file uses no import/export, so it works as both. -->
+    <script src="./sample-data.js"></script>
+    <script src="../tournament-bracket-card.js"></script>
+    <script>
+      const mount = document.getElementById("mount");
+      const card = document.createElement("tournament-bracket-card");
+      const params = new URLSearchParams(location.search);
+      const rounds = params.has("small") ? window.WC_SAMPLE.slice(2, 5) : window.WC_SAMPLE;
+      card.setConfig({
+        title: params.has("small") ? "Bracket (small sample)" : "FIFA World Cup 2026 — Knockout Bracket",
+        rounds: rounds,
+        show_third_place: true,
+        show_logos: true,
+      });
+      mount.appendChild(card);
+      if (params.has("narrow")) mount.style.maxWidth = "380px";
+
+      document.getElementById("theme").addEventListener("click", () => {
+        document.body.classList.toggle("dark");
+      });
+      document.getElementById("narrow").addEventListener("click", () => {
+        mount.style.maxWidth = mount.style.maxWidth === "420px" ? "1340px" : "420px";
+      });
+    </script>
+  </body>
+</html>

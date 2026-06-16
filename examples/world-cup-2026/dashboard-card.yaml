@@ -1,0 +1,12 @@
+# Lovelace card config — add via the dashboard's "Add Card" → "Manual"
+# (after installing tournament-bracket-card and setting up package.yaml).
+#
+# TIP: put this card in a PANEL-mode view (View type → "Panel (1 card)", or
+# `panel: true` in YAML) so the bracket gets full page width. In a normal column
+# the card's container query switches to the narrow single-column (tab) layout.
+type: custom:tournament-bracket-card
+title: World Cup 2026 — Knockout Bracket
+entity: sensor.wc_bracket
+attribute: rounds
+show_third_place: true
+show_logos: true

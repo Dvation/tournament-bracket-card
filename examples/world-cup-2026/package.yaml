@@ -1,0 +1,91 @@
+# ---------------------------------------------------------------------------
+# World Cup 2026 knockout bracket — data glue for tournament-bracket-card
+#
+# Produces sensor.wc_bracket with a `rounds` attribute in the card's neutral
+# data model, sourced from ESPN's PUBLIC API (no API key, no secrets).
+#
+# Install: copy this file to <config>/packages/world_cup_bracket.yaml and ensure
+# packages are enabled in configuration.yaml:
+#
+#   homeassistant:
+#     packages: !include_dir_named packages
+#
+# Then restart Home Assistant. (Or merge the `rest:` and `template:` sections
+# into your configuration.yaml directly.)
+# ---------------------------------------------------------------------------
+
+rest:
+  - resource: "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?lang=en&limit=100&dates=20260628-20260719"
+    scan_interval: 120
+    timeout: 30
+    headers:
+      User-Agent: "Home Assistant World Cup Bracket"
+    sensor:
+      - name: "WC Knockout Raw"
+        unique_id: wc_knockout_raw
+        value_template: "{{ (value_json.events | default([])) | count }}"
+        json_attributes:
+          - events
+
+template:
+  - trigger:
+      - platform: state
+        entity_id: sensor.wc_knockout_raw
+      - platform: homeassistant
+        event: start
+      - platform: time_pattern
+        minutes: "/2"
+    sensor:
+      - name: "WC Bracket"
+        unique_id: wc_bracket
+        state: "{{ (state_attr('sensor.wc_knockout_raw', 'events') | default([])) | count }} matches"
+        attributes:
+          # Emit the neutral `rounds` model as a JSON string; the card parses
+          # either a JSON string or a native list.
+          rounds: >
+            {% set events = state_attr('sensor.wc_knockout_raw', 'events') or [] %}
+            {% set order = [
+              {'slug': 'round-of-32',     'name': 'Round of 32'},
+              {'slug': 'round-of-16',     'name': 'Round of 16'},
+              {'slug': 'quarterfinals',   'name': 'Quarterfinals'},
+              {'slug': 'semifinals',      'name': 'Semifinals'},
+              {'slug': 'final',           'name': 'Final'},
+              {'slug': '3rd-place-match', 'name': 'Third Place'}
+            ] %}
+            {% set ns = namespace(rounds=[]) %}
+            {% for r in order %}
+              {% set ms = namespace(list=[]) %}
+              {% for e in (events | sort(attribute='date')) if e.season.slug == r.slug %}
+                {% set comp = e.competitions[0] %}
+                {% set st = comp.status.type %}
+                {% set state = 'live' if st.state == 'in' else st.state %}
+                {% set home = (comp.competitors | selectattr('homeAway', 'eq', 'home') | list) %}
+                {% set away = (comp.competitors | selectattr('homeAway', 'eq', 'away') | list) %}
+                {% if home and away %}
+                  {% set h = home[0] %}
+                  {% set a = away[0] %}
+                  {% set m = {
+                    'id': e.id, 'date': e.date, 'state': state,
+                    'statusDetail': (st.shortDetail if st.state != 'pre' else none),
+                    'sideA': {'name': (h.team.displayName if h.team.logo else h.team.abbreviation), 'short': h.team.abbreviation, 'logo': (h.team.logo if h.team.logo else none), 'score': (h.score if st.state != 'pre' else none), 'winner': h.winner},
+                    'sideB': {'name': (a.team.displayName if a.team.logo else a.team.abbreviation), 'short': a.team.abbreviation, 'logo': (a.team.logo if a.team.logo else none), 'score': (a.score if st.state != 'pre' else none), 'winner': a.winner}
+                  } %}
+                  {% set ms.list = ms.list + [m] %}
+                {% endif %}
+              {% endfor %}
+              {% if ms.list %}
+                {% set ns.rounds = ns.rounds + [{'id': r.slug, 'name': r.name, 'matches': ms.list}] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.rounds | to_json }}
+
+# ---------------------------------------------------------------------------
+# Recommended: keep these large/volatile entities out of the recorder database.
+# If you already have a `recorder:` block, MERGE these excludes into it instead
+# of pasting a second `recorder:` key (duplicate keys will error).
+# ---------------------------------------------------------------------------
+# recorder:
+#   exclude:
+#     entities:
+#       - sensor.wc_knockout_raw
+#       - sensor.wc_bracket
