@@ -60,6 +60,8 @@ template:
   - trigger:
       - platform: state
         entity_id: sensor.wc_knockout_raw
+      - platform: state
+        entity_id: sensor.wc_standings
       - platform: homeassistant
         event: start
       - platform: time_pattern
@@ -72,6 +74,13 @@ template:
           # Emit the neutral `rounds` model as a JSON string; the card parses
           # either a JSON string or a native list.
           rounds: >
+            {# Project placeholder knockout slots (1A/2B/...) from live group
+               standings so real names appear before the group stage ends. When
+               ESPN fills the actual qualified team (logo present), that wins. #}
+            {% set sraw = state_attr('sensor.wc_standings', 'groups') %}
+            {% set gp = (sraw|from_json) if sraw is string else (sraw or []) %}
+            {% macro pname(t) %}{% if t.logo %}{{ t.displayName }}{% elif t.abbreviation and t.abbreviation|length==2 and t.abbreviation[0] in '12' and t.abbreviation[1] in 'ABCDEFGHIJKL' %}{% set grp = gp|selectattr('name','eq','Group ' + t.abbreviation[1])|list|first %}{% if grp and (grp.teams|length)>=(t.abbreviation[0]|int) %}{{ grp.teams[(t.abbreviation[0]|int)-1].name }}{% else %}{{ t.abbreviation }}{% endif %}{% elif 'Third Place' in (t.displayName|string) %}{{ t.displayName | replace('Third Place Group ','3rd ') }}{% else %}{{ t.displayName or t.abbreviation }}{% endif %}{% endmacro %}
+            {% macro plogo(t) %}{% if t.logo %}{{ t.logo }}{% elif t.abbreviation and t.abbreviation|length==2 and t.abbreviation[0] in '12' and t.abbreviation[1] in 'ABCDEFGHIJKL' %}{% set grp = gp|selectattr('name','eq','Group ' + t.abbreviation[1])|list|first %}{% if grp and (grp.teams|length)>=(t.abbreviation[0]|int) %}{{ grp.teams[(t.abbreviation[0]|int)-1].logo }}{% endif %}{% endif %}{% endmacro %}
             {% set events = state_attr('sensor.wc_knockout_raw', 'events') or [] %}
             {% set order = [
               {'slug': 'round-of-32',     'name': 'Round of 32'},
@@ -93,11 +102,13 @@ template:
                 {% if home and away %}
                   {% set h = home[0] %}
                   {% set a = away[0] %}
+                  {% set hn = pname(h.team)|trim %}{% set hl = plogo(h.team)|trim %}
+                  {% set an = pname(a.team)|trim %}{% set al = plogo(a.team)|trim %}
                   {% set m = {
                     'id': e.id, 'date': e.date, 'state': state,
                     'statusDetail': (st.shortDetail if st.state != 'pre' else none),
-                    'sideA': {'name': (h.team.displayName if h.team.logo else h.team.abbreviation), 'short': h.team.abbreviation, 'logo': (h.team.logo if h.team.logo else none), 'score': (h.score if st.state != 'pre' else none), 'winner': h.winner},
-                    'sideB': {'name': (a.team.displayName if a.team.logo else a.team.abbreviation), 'short': a.team.abbreviation, 'logo': (a.team.logo if a.team.logo else none), 'score': (a.score if st.state != 'pre' else none), 'winner': a.winner}
+                    'sideA': {'name': hn, 'short': h.team.abbreviation, 'logo': (hl if hl else none), 'score': (h.score if st.state != 'pre' else none), 'winner': h.winner},
+                    'sideB': {'name': an, 'short': a.team.abbreviation, 'logo': (al if al else none), 'score': (a.score if st.state != 'pre' else none), 'winner': a.winner}
                   } %}
                   {% set ms.list = ms.list + [m] %}
                 {% endif %}
@@ -138,7 +149,10 @@ template:
                   'ga': (e.stats|selectattr('name','eq','pointsAgainst')|map(attribute='displayValue')|first|default('0')),
                   'gd': (e.stats|selectattr('name','eq','pointDifferential')|map(attribute='displayValue')|first|default('0')),
                   'pts': (e.stats|selectattr('name','eq','points')|map(attribute='displayValue')|first|default('0')),
-                  'rank': (e.stats|selectattr('name','eq','rank')|map(attribute='value')|first|default(99))|int
+                  'rank': (e.stats|selectattr('name','eq','rank')|map(attribute='value')|first|default(99))|int,
+                  'note_desc': (e.note.description if e.note else none),
+                  'note_color': (e.note.color if e.note else none),
+                  'advanced': ((e.stats|selectattr('name','eq','advanced')|map(attribute='displayValue')|first|default('0')) == '1')
                 } %}
                 {% set teams.list = teams.list + [t] %}
               {% endfor %}
