@@ -1,22 +1,20 @@
-# World Cup 2026 — knockout bracket example
+# World Cup 2026 — full tournament dashboard example
 
-A complete, real-data example for **tournament-bracket-card** using ESPN's public
-API — no API key, no secrets, nothing leaves your instance except an outbound GET
-to `site.api.espn.com`.
+A complete, real-data World Cup dashboard using ESPN's public API — no API key, no
+secrets, nothing leaves your instance except outbound GETs to `site.api.espn.com`.
+Three tabs: **Bracket** (tournament-bracket-card), **Groups** (12 group tables), and
+**Matches** (today / live / results / upcoming).
 
 ## How it works
 
 ```
-ESPN scoreboard API ──(rest:)──▶ sensor.wc_knockout_raw  (raw events in attribute)
-                                          │  (template: trigger)
-                                          ▼
-                              sensor.wc_bracket.attributes.rounds  (neutral model)
-                                          │
-                                          ▼
-                              custom:tournament-bracket-card
+ESPN public API ──(rest:)──▶ raw sensors ──(template:)──▶
+   • sensor.wc_bracket   .rounds   → tournament-bracket-card  (Bracket tab)
+   • sensor.wc_standings .groups   → markdown group tables     (Groups tab)
+   • sensor.wc_schedule  .matches  → markdown match lists       (Matches tab)
 ```
 
-ESPN already publishes the full 32-match knockout structure with TBD placeholders
+ESPN already publishes the 32-match knockout structure with TBD placeholders
 (`2A`, "Group B 2nd Place", …), so the bracket renders **now** and fills in real
 teams/scores automatically as the tournament progresses — no seeding logic needed.
 
@@ -59,6 +57,21 @@ teams/scores automatically as the tournament progresses — no seeding logic nee
            entity: sensor.wc_bracket
            attribute: rounds
    ```
+
+## Full dashboard (Groups & Matches)
+
+For the complete three-tab dashboard, use [`dashboard.yaml`](./dashboard.yaml) — it adds:
+
+- **Groups** — a row of clickable group tabs (A–L) backed by `input_select.wc_group`
+  (defined in `package.yaml`), with a markdown table for the selected group showing
+  flag, full name, code, and P/W/D/L/GF/GA/GD/Pts.
+- **Matches** — today's matches on top, then live, recent results, and upcoming —
+  each with national flags.
+
+All group/match cards are **native markdown** (no third-party card, no `eval`). The
+only optional dependency is **card-mod** (HACS), used purely to highlight the active
+group tab — without it the tabs still work, just unhighlighted. Flags use ESPN's image
+combiner (`?h=20&w=20`) so they render small inline without HTML sizing.
 
 ## Notes
 

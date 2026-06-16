@@ -1,0 +1,67 @@
+# ---------------------------------------------------------------------------
+# World Cup 2026 dashboard views (Bracket | Groups | Matches)
+#
+# Paste these `views:` into a dashboard via the raw configuration editor
+# (dashboard -> Edit -> three dots -> "Edit in YAML"), or use them in a
+# YAML-mode dashboard.
+#
+# Requires:
+#   - tournament-bracket-card  (this repo)         -> Bracket view
+#   - the package.yaml sensors (wc_bracket, wc_standings, wc_schedule)
+#   - input_select.wc_group    (in package.yaml)   -> Groups tabs
+#   - card-mod (HACS, optional)                    -> active group-tab highlight
+#
+# Flags use ESPN's image combiner sized to ~18-20px so they render inline.
+# ---------------------------------------------------------------------------
+views:
+  - title: Bracket
+    path: bracket
+    icon: mdi:tournament
+    panel: true
+    cards:
+      - type: custom:tournament-bracket-card
+        title: World Cup 2026 — Knockout Bracket
+        entity: sensor.wc_bracket
+        attribute: rounds
+        show_third_place: true
+        show_logos: true
+        theme: neon
+
+  - title: Groups
+    path: groups
+    icon: mdi:table
+    cards:
+      # Clickable group tabs (A–L). The card-mod style highlights the active
+      # one; without card-mod installed the buttons still work (no highlight).
+      - type: grid
+        columns: 6
+        square: false
+        cards:
+          # Repeat this button for each group A–L, changing `name` and `option`
+          # (and the group letter in the card_mod condition):
+          - type: button
+            name: A
+            show_icon: false
+            card_mod:
+              style: "ha-card { {% if is_state('input_select.wc_group','Group A') %}border:2px solid var(--primary-color);background:rgba(var(--rgb-primary-color),0.14){% endif %} }"
+            tap_action:
+              action: perform-action
+              perform_action: input_select.select_option
+              target:
+                entity_id: input_select.wc_group
+              data:
+                option: Group A
+          # ... buttons B through L follow the same pattern ...
+      # Selected group's table: flag + full name + code + P/W/D/L/GF/GA/GD/Pts
+      - type: markdown
+        content: |
+          {% set sel = states('input_select.wc_group') %}{% set raw = state_attr('sensor.wc_standings','groups') %}{% set gp = (raw|from_json) if raw is string else (raw or []) %}{% set g = (gp|selectattr('name','eq',sel)|list|first) %}{% if g %}{% set o = namespace(s='## ' + g.name + '\n\n|  | Team | Code | P | W | D | L | GF | GA | GD | Pts |\n|:-:|:--|:--|--:|--:|--:|--:|--:|--:|--:|--:|\n') %}{% for t in g.teams %}{% set flag = ('![](https://a.espncdn.com/combiner/i?img=' + (t.logo|replace('https://a.espncdn.com','')) + '&h=20&w=20)') if t.logo else '' %}{% set o.s = o.s + '| ' + flag + ' | ' + t.name + ' | ' + t.abbr + ' | ' + t.gp + ' | ' + t.w + ' | ' + t.d + ' | ' + t.l + ' | ' + t.gf + ' | ' + t.ga + ' | ' + t.gd + ' | **' + t.pts + '** |\n' %}{% endfor %}{{ o.s }}{% else %}_Select a group above._{% endif %}
+
+  - title: Matches
+    path: matches
+    icon: mdi:calendar-clock
+    cards:
+      # Today on top, then Live / Recent results / Upcoming — flags both sides.
+      - type: markdown
+        content: |
+          {% set raw = state_attr('sensor.wc_schedule','matches') %}{% set ms = (raw|from_json) if raw is string else (raw or []) %}{% set today = now().strftime('%Y-%m-%d') %}{% set P = 'https://a.espncdn.com' %}{% set o = namespace(s='') %}{% set live = ms|selectattr('state','eq','live')|list %}{% if live %}{% set o.s = o.s + '## 🔴 Live now\n\n' %}{% for m in live %}{% set fh=('![](' + P + '/combiner/i?img=' + (m.homeLogo|replace(P,'')) + '&h=18&w=18) ') if m.homeLogo else '' %}{% set fa=(' ![](' + P + '/combiner/i?img=' + (m.awayLogo|replace(P,'')) + '&h=18&w=18)') if m.awayLogo else '' %}{% set o.s = o.s + '- ' + fh + '**' + m.home + ' ' + (m.homeScore|string) + '–' + (m.awayScore|string) + ' ' + m.away + '**' + fa + ' · ' + (m.status|string) + '\n' %}{% endfor %}{% set o.s = o.s + '\n' %}{% endif %}{% set o.s = o.s + '## 📅 Today\n\n' %}{% set any=namespace(v=false) %}{% for m in ms %}{% set d=(m.date|as_datetime|as_local) %}{% if d.strftime('%Y-%m-%d')==today %}{% set any.v=true %}{% set fh=('![](' + P + '/combiner/i?img=' + (m.homeLogo|replace(P,'')) + '&h=18&w=18) ') if m.homeLogo else '' %}{% set fa=(' ![](' + P + '/combiner/i?img=' + (m.awayLogo|replace(P,'')) + '&h=18&w=18)') if m.awayLogo else '' %}{% if m.state=='pre' %}{% set o.s = o.s + '- ' + d.strftime('%-I:%M %p') + ' · ' + fh + m.home + ' v ' + m.away + fa + '\n' %}{% else %}{% set o.s = o.s + '- ' + fh + m.home + ' ' + (m.homeScore|string) + '–' + (m.awayScore|string) + ' ' + m.away + fa + ' · ' + (m.status|string) + '\n' %}{% endif %}{% endif %}{% endfor %}{% if not any.v %}{% set o.s = o.s + '_No matches today._\n' %}{% endif %}{% set o.s = o.s + '\n## 🏁 Recent results\n\n' %}{% set res = ms|selectattr('state','eq','post')|list %}{% for m in (res[-8:]|reverse) %}{% set fh=('![](' + P + '/combiner/i?img=' + (m.homeLogo|replace(P,'')) + '&h=18&w=18) ') if m.homeLogo else '' %}{% set fa=(' ![](' + P + '/combiner/i?img=' + (m.awayLogo|replace(P,'')) + '&h=18&w=18)') if m.awayLogo else '' %}{% set o.s = o.s + '- ' + (m.date|as_datetime|as_local).strftime('%-m/%-d') + ' · ' + fh + m.home + ' ' + (m.homeScore|string) + '–' + (m.awayScore|string) + ' ' + m.away + fa + '\n' %}{% endfor %}{% set o.s = o.s + '\n## ⏭️ Upcoming\n\n' %}{% set up = ms|selectattr('state','eq','pre')|list %}{% for m in up[:12] %}{% set fh=('![](' + P + '/combiner/i?img=' + (m.homeLogo|replace(P,'')) + '&h=18&w=18) ') if m.homeLogo else '' %}{% set fa=(' ![](' + P + '/combiner/i?img=' + (m.awayLogo|replace(P,'')) + '&h=18&w=18)') if m.awayLogo else '' %}{% set o.s = o.s + '- ' + (m.date|as_datetime|as_local).strftime('%a %-m/%-d %-I:%M %p') + ' · ' + fh + m.home + ' v ' + m.away + fa + '\n' %}{% endfor %}{{ o.s }}

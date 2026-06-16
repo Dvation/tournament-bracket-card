@@ -182,6 +182,26 @@ template:
             {% endfor %}
             {{ (ns.list | sort(attribute='date')) | to_json }}
 
+# Helper backing the clickable group tabs on the Groups dashboard view.
+input_select:
+  wc_group:
+    name: WC Group
+    icon: mdi:soccer
+    initial: Group A
+    options:
+      - Group A
+      - Group B
+      - Group C
+      - Group D
+      - Group E
+      - Group F
+      - Group G
+      - Group H
+      - Group I
+      - Group J
+      - Group K
+      - Group L
+
 # ---------------------------------------------------------------------------
 # Recommended: keep these large/volatile entities out of the recorder database.
 # If you already have a `recorder:` block, MERGE these excludes into it instead
