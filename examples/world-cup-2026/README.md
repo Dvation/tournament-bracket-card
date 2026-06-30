@@ -18,6 +18,11 @@ ESPN already publishes the 32-match knockout structure with TBD placeholders
 (`2A`, "Group B 2nd Place", …), so the bracket renders **now** and fills in real
 teams/scores automatically as the tournament progresses — no seeding logic needed.
 
+ESPN's feed numbers the knockout matches, but a round's matches don't feed the
+next round in pairs of consecutive numbers (R16 #1 is fed by R32 #1 **and #3**, not
+#1 and #2). The template lays each round out in true bracket order (`bracket_order`
+in `package.yaml`) so the card's connectors join the correct pairs top-to-bottom.
+
 ## Setup
 
 1. **Install the card** (HACS custom repository → category *Dashboard*, or copy

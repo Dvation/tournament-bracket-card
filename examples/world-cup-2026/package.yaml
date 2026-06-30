@@ -82,6 +82,11 @@ template:
             {% macro pname(t) %}{% if t.logo %}{{ t.displayName }}{% elif t.abbreviation and t.abbreviation|length==2 and t.abbreviation[0] in '12' and t.abbreviation[1] in 'ABCDEFGHIJKL' %}{% set grp = gp|selectattr('name','eq','Group ' + t.abbreviation[1])|list|first %}{% if grp and (grp.teams|length)>=(t.abbreviation[0]|int) %}{{ grp.teams[(t.abbreviation[0]|int)-1].name }}{% else %}{{ t.abbreviation }}{% endif %}{% elif 'Third Place' in (t.displayName|string) %}{{ t.displayName | replace('Third Place Group ','3rd ') }}{% else %}{{ t.displayName or t.abbreviation }}{% endif %}{% endmacro %}
             {% macro plogo(t) %}{% if t.logo %}{{ t.logo }}{% elif t.abbreviation and t.abbreviation|length==2 and t.abbreviation[0] in '12' and t.abbreviation[1] in 'ABCDEFGHIJKL' %}{% set grp = gp|selectattr('name','eq','Group ' + t.abbreviation[1])|list|first %}{% if grp and (grp.teams|length)>=(t.abbreviation[0]|int) %}{{ grp.teams[(t.abbreviation[0]|int)-1].logo }}{% endif %}{% endif %}{% endmacro %}
             {% set events = state_attr('sensor.wc_knockout_raw', 'events') or [] %}
+            {# Bracket position order per round (match #N = the Nth match sorted
+               by id). ESPN's R32->R16 feed is interleaved, so laying matches out
+               by date/id mis-pairs the connectors; this orders each round
+               top-to-bottom in true bracket order. #}
+            {% set bracket_order = {'round-of-32': [1,3,4,5,11,12,9,10,2,6,7,8,13,15,14,16], 'round-of-16': [1,2,5,6,3,4,7,8], 'quarterfinals': [1,2,3,4], 'semifinals': [1,2], 'final': [1], '3rd-place-match': [1]} %}
             {% set order = [
               {'slug': 'round-of-32',     'name': 'Round of 32'},
               {'slug': 'round-of-16',     'name': 'Round of 16'},
@@ -92,8 +97,12 @@ template:
             ] %}
             {% set ns = namespace(rounds=[]) %}
             {% for r in order %}
+              {% set rms = namespace(l=[]) %}
+              {% for e in (events | sort(attribute='id')) if e.season.slug == r.slug %}{% set rms.l = rms.l + [e] %}{% endfor %}
+              {% set bo = bracket_order[r.slug] if r.slug in bracket_order else (range(1, (rms.l|length)+1)|list) %}
               {% set ms = namespace(list=[]) %}
-              {% for e in (events | sort(attribute='date')) if e.season.slug == r.slug %}
+              {% for n in bo %}{% if n <= (rms.l|length) %}
+                {% set e = rms.l[n-1] %}
                 {% set comp = e.competitions[0] %}
                 {% set st = comp.status.type %}
                 {% set state = 'live' if st.state == 'in' else st.state %}
@@ -112,7 +121,7 @@ template:
                   } %}
                   {% set ms.list = ms.list + [m] %}
                 {% endif %}
-              {% endfor %}
+              {% endif %}{% endfor %}
               {% if ms.list %}
                 {% set ns.rounds = ns.rounds + [{'id': r.slug, 'name': r.name, 'matches': ms.list}] %}
               {% endif %}
